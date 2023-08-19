@@ -5,6 +5,7 @@ namespace Illuminate\Tests\Console;
 use Illuminate\Console\Application;
 use Illuminate\Console\Command;
 use Illuminate\Console\OutputStyle;
+use Illuminate\Console\View\Components\Factory;
 use Mockery as m;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -35,7 +36,9 @@ class CommandTest extends TestCase
 
         $input = new ArrayInput([]);
         $output = new NullOutput;
-        $application->shouldReceive('make')->with(OutputStyle::class, ['input' => $input, 'output' => $output])->andReturn(m::mock(OutputStyle::class));
+        $outputStyle = m::mock(OutputStyle::class);
+        $application->shouldReceive('make')->with(OutputStyle::class, ['input' => $input, 'output' => $output])->andReturn($outputStyle);
+        $application->shouldReceive('make')->with(Factory::class, ['output' => $outputStyle])->andReturn(m::mock(Factory::class));
 
         $application->shouldReceive('call')->with([$command, 'handle'])->andReturnUsing(function () use ($command, $application) {
             $commandCalled = m::mock(Command::class);
@@ -48,6 +51,7 @@ class CommandTest extends TestCase
 
             $command->call(Command::class);
         });
+        $application->shouldReceive('runningUnitTests')->andReturn(true);
 
         $command->run($input, $output);
     }
@@ -172,6 +176,18 @@ class CommandTest extends TestCase
 
         $this->assertFalse($command->isHidden());
         $this->assertFalse($command->parentIsHidden());
+    }
+
+    public function testAliasesProperty()
+    {
+        $command = new class extends Command
+        {
+            protected $name = 'foo:bar';
+
+            protected $aliases = ['bar:baz', 'baz:qux'];
+        };
+
+        $this->assertSame(['bar:baz', 'baz:qux'], $command->getAliases());
     }
 
     public function testChoiceIsSingleSelectByDefault()

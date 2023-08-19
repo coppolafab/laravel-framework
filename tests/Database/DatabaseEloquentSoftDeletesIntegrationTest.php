@@ -237,7 +237,7 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
 
         try {
             $user->forceDelete();
-        } catch (Exception $exception) {
+        } catch (Exception) {
         }
 
         $this->assertTrue($user->exists);
@@ -315,6 +315,20 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
         $this->assertCount(1, SoftDeletesTestUser::all());
 
         $result = SoftDeletesTestUser::firstOrCreate(['email' => 'foo@bar.com']);
+        $this->assertSame('foo@bar.com', $result->email);
+        $this->assertCount(2, SoftDeletesTestUser::all());
+        $this->assertCount(3, SoftDeletesTestUser::withTrashed()->get());
+    }
+
+    public function testCreateOrFirst()
+    {
+        $this->createUsers();
+
+        $result = SoftDeletesTestUser::withTrashed()->createOrFirst(['email' => 'taylorotwell@gmail.com']);
+        $this->assertSame('taylorotwell@gmail.com', $result->email);
+        $this->assertCount(1, SoftDeletesTestUser::all());
+
+        $result = SoftDeletesTestUser::createOrFirst(['email' => 'foo@bar.com']);
         $this->assertSame('foo@bar.com', $result->email);
         $this->assertCount(2, SoftDeletesTestUser::all());
         $this->assertCount(3, SoftDeletesTestUser::withTrashed()->get());

@@ -74,7 +74,7 @@ class FoundationExceptionsHandlerTest extends TestCase
     {
         $logger = m::mock(LoggerInterface::class);
         $this->container->instance(LoggerInterface::class, $logger);
-        $logger->shouldReceive('log')->withArgs([LogLevel::ERROR, 'Exception message', m::hasKey('exception')])->once();
+        $logger->shouldReceive('error')->withArgs(['Exception message', m::hasKey('exception')])->once();
 
         $this->handler->report(new RuntimeException('Exception message'));
     }
@@ -83,7 +83,7 @@ class FoundationExceptionsHandlerTest extends TestCase
     {
         $logger = m::mock(LoggerInterface::class);
         $this->container->instance(LoggerInterface::class, $logger);
-        $logger->shouldReceive('log')->withArgs([LogLevel::ERROR, 'Exception message', m::subset(['foo' => 'bar'])])->once();
+        $logger->shouldReceive('error')->withArgs(['Exception message', m::subset(['foo' => 'bar'])])->once();
 
         $this->handler->report(new ContextProvidingException('Exception message'));
     }
@@ -92,7 +92,7 @@ class FoundationExceptionsHandlerTest extends TestCase
     {
         $logger = m::mock(LoggerInterface::class);
         $this->container->instance(LoggerInterface::class, $logger);
-        $logger->shouldReceive('log')->withArgs([LogLevel::ERROR, 'Exception message', m::hasKey('exception')])->once();
+        $logger->shouldReceive('error')->withArgs(['Exception message', m::hasKey('exception')])->once();
 
         $this->handler->report(new UnReportableException('Exception message'));
     }
@@ -101,16 +101,17 @@ class FoundationExceptionsHandlerTest extends TestCase
     {
         $logger = m::mock(LoggerInterface::class);
         $this->container->instance(LoggerInterface::class, $logger);
-        $logger->shouldReceive('log')->withArgs([LogLevel::CRITICAL, 'Critical message', m::hasKey('exception')])->once();
-        $logger->shouldReceive('log')->withArgs([LogLevel::ERROR, 'Error message', m::hasKey('exception')])->once();
-        $logger->shouldReceive('log')->withArgs([LogLevel::WARNING, 'Warning message', m::hasKey('exception')])->once();
+
+        $logger->shouldReceive('critical')->withArgs(['Critical message', m::hasKey('exception')])->once();
+        $logger->shouldReceive('error')->withArgs(['Error message', m::hasKey('exception')])->once();
+        $logger->shouldReceive('log')->withArgs(['custom', 'Custom message', m::hasKey('exception')])->once();
 
         $this->handler->level(InvalidArgumentException::class, LogLevel::CRITICAL);
-        $this->handler->level(OutOfRangeException::class, LogLevel::WARNING);
+        $this->handler->level(OutOfRangeException::class, 'custom');
 
         $this->handler->report(new InvalidArgumentException('Critical message'));
         $this->handler->report(new RuntimeException('Error message'));
-        $this->handler->report(new OutOfRangeException('Warning message'));
+        $this->handler->report(new OutOfRangeException('Custom message'));
     }
 
     public function testHandlerIgnoresNotReportableExceptions()
@@ -185,6 +186,22 @@ class FoundationExceptionsHandlerTest extends TestCase
         $response = $this->handler->render($this->request, new CustomException)->getContent();
 
         $this->assertSame('{"response":"The CustomRenderer response"}', $response);
+    }
+
+    public function testReturnsResponseFromRenderableException()
+    {
+        $response = $this->handler->render(Request::create('/'), new RenderableException)->getContent();
+
+        $this->assertSame('{"response":"My renderable exception response"}', $response);
+    }
+
+    public function testReturnsResponseFromMappedRenderableException()
+    {
+        $this->handler->map(RuntimeException::class, RenderableException::class);
+
+        $response = $this->handler->render(Request::create('/'), new RuntimeException)->getContent();
+
+        $this->assertSame('{"response":"My renderable exception response"}', $response);
     }
 
     public function testReturnsCustomResponseWhenExceptionImplementsResponsable()
@@ -398,7 +415,7 @@ class FoundationExceptionsHandlerTest extends TestCase
                 throw new Exception;
             }, CustomException::class);
             $testFailed = true;
-        } catch (AssertionFailedError $exception) {
+        } catch (AssertionFailedError) {
             $testFailed = false;
         }
 
@@ -411,7 +428,7 @@ class FoundationExceptionsHandlerTest extends TestCase
                 throw new Exception('Some message.');
             }, expectedClass: Exception::class, expectedMessage: 'Other message.');
             $testFailed = true;
-        } catch (AssertionFailedError $exception) {
+        } catch (AssertionFailedError) {
             $testFailed = false;
         }
 
@@ -446,6 +463,14 @@ class UnReportableException extends Exception
     public function report()
     {
         return false;
+    }
+}
+
+class RenderableException extends Exception
+{
+    public function render($request)
+    {
+        return response()->json(['response' => 'My renderable exception response']);
     }
 }
 

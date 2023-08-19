@@ -5,6 +5,7 @@ namespace Illuminate\Tests\Foundation\Testing;
 use Illuminate\Foundation\Testing\TestCase as FoundationTestCase;
 use Orchestra\Testbench\Concerns\CreatesApplication;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 
 trait TestTrait
 {
@@ -32,15 +33,15 @@ class BootTraitsTest extends TestCase
 {
     public function testSetUpAndTearDownTraits()
     {
-        $testCase = new TestCaseWithTrait;
+        $testCase = new TestCaseWithTrait('foo');
 
-        $method = new \ReflectionMethod($testCase, 'setUpTraits');
-        tap($method)->setAccessible(true)->invoke($testCase);
+        $method = new ReflectionMethod($testCase, 'setUpTraits');
+        $method->invoke($testCase);
 
         $this->assertTrue($testCase->setUp);
 
-        $method = new \ReflectionMethod($testCase, 'callBeforeApplicationDestroyedCallbacks');
-        tap($method)->setAccessible(true)->invoke($testCase);
+        $method = new ReflectionMethod($testCase, 'callBeforeApplicationDestroyedCallbacks');
+        $method->invoke($testCase);
 
         $this->assertTrue($testCase->tearDown);
     }

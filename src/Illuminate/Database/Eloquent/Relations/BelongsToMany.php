@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\Eloquent\Relations\Concerns\AsPivot;
 use Illuminate\Database\Eloquent\Relations\Concerns\InteractsWithDictionary;
 use Illuminate\Database\Eloquent\Relations\Concerns\InteractsWithPivotTable;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -242,7 +243,8 @@ class BelongsToMany extends Relation
     {
         $whereIn = $this->whereInMethod($this->parent, $this->parentKey);
 
-        $this->query->{$whereIn}(
+        $this->whereInEager(
+            $whereIn,
             $this->getQualifiedForeignPivotKeyName(),
             $this->getKeys($models, $this->parentKey)
         );
@@ -608,7 +610,7 @@ class BelongsToMany extends Relation
     }
 
     /**
-     * Get the first related record matching the attributes or create it.
+     * Get the first record matching the attributes. If the record is not found, create it.
      *
      * @param  array  $attributes
      * @param  array  $values
@@ -627,6 +629,32 @@ class BelongsToMany extends Relation
         }
 
         return $instance;
+    }
+
+    /**
+     * Attempt to create the record. If a unique constraint violation occurs, attempt to find the matching record.
+     *
+     * @param  array  $attributes
+     * @param  array  $values
+     * @param  array  $joining
+     * @param  bool  $touch
+     * @return \Illuminate\Database\Eloquent\Model
+     */
+    public function createOrFirst(array $attributes = [], array $values = [], array $joining = [], $touch = true)
+    {
+        try {
+            return $this->create(array_merge($attributes, $values), $joining, $touch);
+        } catch (UniqueConstraintViolationException $exception) {
+            // ...
+        }
+
+        try {
+            return tap($this->related->where($attributes)->first(), function ($instance) use ($joining, $touch) {
+                $this->attach($instance, $joining, $touch);
+            });
+        } catch (UniqueConstraintViolationException $exception) {
+            return (clone $this)->where($attributes)->first();
+        }
     }
 
     /**
@@ -688,8 +716,8 @@ class BelongsToMany extends Relation
             return $this->getRelated()->newCollection();
         }
 
-        return $this->whereIn(
-            $this->getRelated()->getQualifiedKeyName(), $this->parseIds($ids)
+        return $this->whereKey(
+            $this->parseIds($ids)
         )->get($columns);
     }
 
@@ -877,7 +905,7 @@ class BelongsToMany extends Relation
     /**
      * Get the pivot columns for the relation.
      *
-     * "pivot_" is prefixed ot each column for easy removal later.
+     * "pivot_" is prefixed at each column for easy removal later.
      *
      * @return array
      */
@@ -1153,8 +1181,6 @@ class BelongsToMany extends Relation
      */
     public function touch()
     {
-        $key = $this->getRelated()->getKeyName();
-
         $columns = [
             $this->related->getUpdatedAtColumn() => $this->related->freshTimestampString(),
         ];
@@ -1163,7 +1189,7 @@ class BelongsToMany extends Relation
         // the related model's timestamps, to make sure these all reflect the changes
         // to the parent models. This will help us keep any caching synced up here.
         if (count($ids = $this->allRelatedIds()) > 0) {
-            $this->getRelated()->newQueryWithoutRelationships()->whereIn($key, $ids)->update($columns);
+            $this->getRelated()->newQueryWithoutRelationships()->whereKey($ids)->update($columns);
         }
     }
 
@@ -1225,6 +1251,20 @@ class BelongsToMany extends Relation
         $this->touchIfTouching();
 
         return $models;
+    }
+
+    /**
+     * Save an array of new models without raising any events and attach them to the parent model.
+     *
+     * @param  \Illuminate\Support\Collection|array  $models
+     * @param  array  $pivotAttributes
+     * @return array
+     */
+    public function saveManyQuietly($models, array $pivotAttributes = [])
+    {
+        return Model::withoutEvents(function () use ($models, $pivotAttributes) {
+            return $this->saveMany($models, $pivotAttributes);
+        });
     }
 
     /**
